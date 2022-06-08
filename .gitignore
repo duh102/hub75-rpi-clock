@@ -1,3 +1,4 @@
 err*.txt
 output*.txt
 fonts/
+.idea/

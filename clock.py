@@ -37,11 +37,12 @@ def generate_font_map(font, fit_height):
     # Pre-populate the map with the expected contents
     # Could we make an object for this? Undoubtedly! But currently it's not worth the effort
     font_map = {char: {'width': 0, 'img': None} for char in font_height_str}
+    space_width = font.getsize(" ")[0]
     for char, char_attributes in font_map.items():
-        width = font.getsize(char)[0]
+        width = font.getsize(" "+char)[0]-space_width
         img = Image.new('L', (width, fit_height))
         draw = ImageDraw.Draw(img)
-        draw.text((0, 0), char, font=font, fill=255)
+        draw.text((0, 0), str(char), font=font, fill=255)
         char_attributes['width'] = width
         char_attributes['img'] = img
     return font_map
@@ -60,47 +61,38 @@ class BitmapTextDrawing(object):
     def __get_from_fontmap(self, character):
         if character not in font_height_str:
             return None
-        return self.font_map['character']
+        return self.font_map[character]
 
     def width(self, string):
         acc = 0
         for char in string:
             bm_char = self.__get_from_fontmap(char)
-            # if we don't support the character, count it as an inter-character space
+            # if we don't support the character, skip it
             if bm_char is None:
-                acc += 1
+                continue
             else:
                 acc += bm_char['width']
-        if len(string) > 0:
-            # account for inter-character space
-            acc += len(string)-1
         return acc
 
-    def text(self, image, string, position):
+    def text(self, position, image, string):
         x_pos = 0
-        draw = ImageDraw.Draw(image)
         img_size = image.size
         # No sense drawing off the image
         if position[1] + self.fit_height < 0:
+            print('entire draw off top')
             return
         if position[1] > img_size[1]:
+            print('entire draw off bottom')
             return
         for char in string:
             bm_char = self.__get_from_fontmap(char)
             if bm_char is None:
-                # if we don't support the character, count it as an inter-character space
-                x_pos += 1
+                # if we don't support the character, skip it
+                continue
             else:
-                # if we're not the beginning of the string, add the inter-character space
-                if x_pos != 0:
-                    x_pos += 1
-                # Skip this character if it's off the left side of the image
-                if x_pos + position[0] + bm_char['width'] < 0:
-                    continue
-                # And if we're off the right side
-                if x_pos + position[0] > img_size[0]:
-                    continue
-                draw.paste(bm_char['img'], (x_pos+position[0], position[1]))
+                # Skip this character if it's off the left side of the image or if we're off the right side
+                if not (x_pos + position[0] + bm_char['width'] < 0) or (x_pos + position[0] > img_size[0]):
+                    image.paste(bm_char['img'], (x_pos+position[0], position[1]))
                 x_pos += bm_char['width']
 
 
@@ -149,24 +141,23 @@ def clock(now, font_bundle, rot, fg, bg, invert=None):
         invert = False
     time_str = now.strftime(time_fmt)
     date_str = now.strftime(date_fmt)
-    font = font_bundle['font']
+    bitmap_drawing = font_bundle['bm_draw']
 
-    time_str_size = font.getsize(time_str)
-    date_str_size = font.getsize(date_str)
+    time_str_size = bitmap_drawing.width(time_str)
+    date_str_size = bitmap_drawing.width(date_str)
 
     alpha_img = Image.new("L", image_size)
-    alpha_draw = ImageDraw.Draw(alpha_img)
 
-    if time_str_size[0] < 64 and date_str_size[0] < 64:
+    if time_str_size < image_size[0] and date_str_size < image_size[0]:
         # draw it once
-        alpha_draw.text((0, 0), time_str, font=font, fill=255)
-        alpha_draw.text((0, 16), date_str, font=font, fill=255)
+        bitmap_drawing.text((0, 0), alpha_img, time_str)
+        bitmap_drawing.text((0, 16), alpha_img, date_str)
     else:
         # animate it bouncing left to right
-        time_x_siz = time_str_size[0]
-        date_x_siz = date_str_size[0]
-        time_x_var = time_x_siz - 64
-        date_x_var = date_x_siz - 64
+        time_x_siz = time_str_size
+        date_x_siz = date_str_size
+        time_x_var = time_x_siz - image_size[0]
+        date_x_var = date_x_siz - image_size[0]
         half_time_x = time_x_siz / 2.0
         half_date_x = date_x_siz / 2.0
 
@@ -175,8 +166,8 @@ def clock(now, font_bundle, rot, fg, bg, invert=None):
 
         sin_var = math.sin(rot)
 
-        alpha_draw.text((int(round(sin_var * (time_x_inc / 2.0) - half_time_x + 32)), 0), time_str, font=font, fill=255)
-        alpha_draw.text((int(round(sin_var * (date_x_inc / 2.0) - half_date_x + 32)), 16), date_str, font=font, fill=255)
+        bitmap_drawing.text((int(round(sin_var * (time_x_inc / 2.0) - half_time_x + 32)), 0), alpha_img, time_str)
+        bitmap_drawing.text((int(round(sin_var * (date_x_inc / 2.0) - half_date_x + 32)), 16), alpha_img, date_str)
     if not invert:
         return Image.composite(fg, bg, alpha_img).convert("RGB")
     else:
@@ -191,7 +182,7 @@ def choose_font(all_fonts, current_choices, debug=None):
     if len(current_choices) < 1:
         current_choices.extend(all_fonts)
     if debug:
-        print('New font: {}'.format(font.getname()))
+        print('New font: {}'.format(font))
     return font
 
 

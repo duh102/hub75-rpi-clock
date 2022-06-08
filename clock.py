@@ -29,7 +29,8 @@ def find_fonts(search_in):
             temp_file = os.path.join(search_path, fil)
             if os.path.isfile(temp_file) and temp_file[-4:].lower() == '.ttf':
                 found_fonts.append(temp_file)
-    found_fonts = {font_name: get_font_fit(font_name, 16) for font_name in found_fonts}
+    generated_fonts = [get_font_fit(font_name, 16) for font_name in found_fonts]
+    found_fonts = {font_data['font'].getname()[0]: font_data for font_data in generated_fonts}
     return found_fonts
 
 

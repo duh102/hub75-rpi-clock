@@ -64,8 +64,9 @@ def genBlackImage():
     draw.rectangle(((0,0), img.size), fill=(0,0,0))
     return img
 
-def clock(matrix, font, rot, fg, bg):
-    now = datetime.datetime.now()
+def clock(matrix, now, font, rot, fg, bg, invert=None):
+    if invert is None:
+        invert = False
     timStr = now.strftime(timeFmt)
     dateStr = now.strftime(dateFmt)
 
@@ -95,7 +96,11 @@ def clock(matrix, font, rot, fg, bg):
 
         alphaDraw.text((int(round(sinVar*(timeXInc/2.0)-halfTimeX+32)),0), timStr, font=font, fill=255 )
         alphaDraw.text((int(round(sinVar*(dateXInc/2.0)-halfDateX+32)),16), dateStr, font=font, fill=255 )
-    img = Image.composite(fg, bg, alphaImg).convert("RGB")
+    img = None
+    if not invert:
+        img = Image.composite(fg, bg, alphaImg).convert("RGB")
+    else:
+        img = Image.composite(bg, fg, alphaImg).convert("RGB")
 
     matrix.SetImage(img, 0, 0)
 
@@ -121,15 +126,22 @@ def main():
     targetFPS = 60
     targetTime = 1/targetFPS
     fontTime = 15*targetFPS
+    invertTime = 33*targetFPS
 
     frameRotAdd = math.pi/(targetFPS*5)
     colorFrameRotAdd = math.pi/(targetFPS*3)
+
+    nightHourBegin = datetime.time(hour=20)
+    nightHourEnd = datetime.time(hour=6)
 
     # Loop variants
     rot = 0
     colorRot = 0
     colorRotDeg = 0
     fontAt = 0
+    invertAt = 0
+    invert = False
+    isNightHours = False
 
     # Cached data
     colorTable = genColorTable()
@@ -146,10 +158,20 @@ def main():
         colorRot = (colorRot + colorFrameRotAdd) % (math.pi*2)
         colorRotDeg = int( (colorRot/(2*math.pi))*360.0 ) % 360
         fontAt = (fontAt+1) % fontTime
+        invertAt = (invertAt+1)%invertTime
         if fontAt == 0:
             font = chooseFont(fonts, fontChoices, debug=args.debug_font)
+        if invertAt == 0:
+            invert = not invert
 
-        clock(matrix, font, rot, rainbowImageTable[colorRotDeg], blackImage)
+        now = datetime.datetime.now()
+        if not isNightHours and (now.time() > nightHourBegin or now.time() < nightHourEnd):
+            isNightHours = True
+            matrix.brightness = 10
+        if isNightHours and (now.time() <= nightHourBegin and now.time() >= nightHourEnd):
+            isNightHours = False
+            matrix.brightness = 100
+        clock(matrix, now, font, rot, rainbowImageTable[colorRotDeg], blackImage, invert=invert)
         after = time.time()
         consumedTime = after - before
         sleepTime = targetTime-consumedTime

@@ -5,7 +5,7 @@ from PIL import Image, ImageDraw, ImageFont, ImageColor
 time_fmt = '%I:%M:%S%p'
 date_fmt = '%b %d %Y'
 image_size = (64, 32)
-font_height_str = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_+='
+font_height_str = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-=!@#$%^&*()_+;:\'"[]{},.<>/?\\|`~ \t'
 
 
 def setup_matrix():
@@ -29,8 +29,79 @@ def find_fonts(search_in):
             temp_file = os.path.join(search_path, fil)
             if os.path.isfile(temp_file) and temp_file[-4:].lower() == '.ttf':
                 found_fonts.append(temp_file)
-    found_fonts = [get_font_fit(fontName, 16) for fontName in found_fonts]
+    found_fonts = {font_name: get_font_fit(font_name, 16) for font_name in found_fonts}
     return found_fonts
+
+
+def generate_font_map(font, fit_height):
+    # Pre-populate the map with the expected contents
+    # Could we make an object for this? Undoubtedly! But currently it's not worth the effort
+    font_map = {char: {'width': 0, 'img': None} for char in font_height_str}
+    for char, char_attributes in font_map.items():
+        width = font.getsize(char)[0]
+        img = Image.new('L', (width, fit_height))
+        draw = ImageDraw.Draw(img)
+        draw.text((0, 0), char, font=font, fill=255)
+        char_attributes['width'] = width
+        char_attributes['img'] = img
+    return font_map
+
+
+class BitmapTextDrawing(object):
+    def __init__(self, font, font_map=None, fit_height=None):
+        self.font = font
+        if fit_height is None:
+            fit_height = 16
+        self.fit_height = fit_height
+        if font_map is None:
+            font_map = generate_font_map(font, self.fit_height)
+        self.font_map = font_map
+
+    def __get_from_fontmap(self, character):
+        if character not in font_height_str:
+            return None
+        return self.font_map['character']
+
+    def width(self, string):
+        acc = 0
+        for char in string:
+            bm_char = self.__get_from_fontmap(char)
+            # if we don't support the character, count it as an inter-character space
+            if bm_char is None:
+                acc += 1
+            else:
+                acc += bm_char['width']
+        if len(string) > 0:
+            # account for inter-character space
+            acc += len(string)-1
+        return acc
+
+    def text(self, image, string, position):
+        x_pos = 0
+        draw = ImageDraw.Draw(image)
+        img_size = image.size
+        # No sense drawing off the image
+        if position[1] + self.fit_height < 0:
+            return
+        if position[1] > img_size[1]:
+            return
+        for char in string:
+            bm_char = self.__get_from_fontmap(char)
+            if bm_char is None:
+                # if we don't support the character, count it as an inter-character space
+                x_pos += 1
+            else:
+                # if we're not the beginning of the string, add the inter-character space
+                if x_pos != 0:
+                    x_pos += 1
+                # Skip this character if it's off the left side of the image
+                if x_pos + position[0] + bm_char['width'] < 0:
+                    continue
+                # And if we're off the right side
+                if x_pos + position[0] > img_size[0]:
+                    continue
+                draw.paste(bm_char['img'], (x_pos+position[0], position[1]))
+                x_pos += bm_char['width']
 
 
 def get_font_fit(font_name, fit_height, start_size=None):
@@ -43,7 +114,8 @@ def get_font_fit(font_name, fit_height, start_size=None):
         start_size -= 1
         font = ImageFont.truetype(font_name, start_size)
         font_size = font.getsize(font_height_str)
-    return font
+    bm_draw = BitmapTextDrawing(font, fit_height=fit_height)
+    return {'font': font, 'bm_draw': bm_draw}
 
 
 def rgb_from_hue(hue):
@@ -72,11 +144,12 @@ def gen_black_image():
     return img
 
 
-def clock(now, font, rot, fg, bg, invert=None):
+def clock(now, font_bundle, rot, fg, bg, invert=None):
     if invert is None:
         invert = False
     time_str = now.strftime(time_fmt)
     date_str = now.strftime(date_fmt)
+    font = font_bundle['font']
 
     time_str_size = font.getsize(time_str)
     date_str_size = font.getsize(date_str)
@@ -127,6 +200,11 @@ class FakeMatrix(object):
         pass
 
     def SetImage(self, image, x, y):
+        pass
+
+
+class FakeMatrixSaving(FakeMatrix):
+    def SetImage(self, image, x, y):
         image.save('debug.png')
 
 
@@ -135,10 +213,14 @@ def main():
     parser.add_argument('--debug-fps', action='store_true', help='Enable the performance output')
     parser.add_argument('--debug-font', action='store_true',
                         help='Enable the font output (outputs font name when it changes)')
-    parser.add_argument('--debug-single', action='store_true', help='Render a single frame and do not initialize the matrix')
+    parser.add_argument('--debug-single', action='store_true', help='Render a single frame')
+    parser.add_argument('--debug-no-matrix', action='store_true', help='Use a fake matrix, discard output')
+    parser.add_argument('--debug-no-matrix-save', action='store_true', help='Use a fake matrix, output to file')
     args = parser.parse_args()
-    if args.debug_single:
+    if args.debug_no_matrix:
         matrix = FakeMatrix()
+    elif args.debug_no_matrix_save:
+        matrix = FakeMatrixSaving()
     else:
         matrix = setup_matrix()
 
@@ -169,8 +251,10 @@ def main():
     rainbow_image_table = [gen_rainbow_image(rot, color_table) for rot in range(360)]
 
     fonts = find_fonts(os.path.dirname(os.path.realpath(__file__)))
-    font_choices = fonts.copy()
-    font = choose_font(fonts, font_choices, debug=args.debug_font)
+    font_names = list(fonts.keys())
+    font_choices = font_names.copy()
+    font_choice = choose_font(font_names, font_choices, debug=args.debug_font)
+    font = fonts[font_choice]
 
     while True:
         before = time.time()
@@ -180,7 +264,8 @@ def main():
         font_at = (font_at + 1) % font_time
         invert_at = (invert_at + 1) % invert_time
         if font_at == 0:
-            font = choose_font(fonts, font_choices, debug=args.debug_font)
+            font_choice = choose_font(font_names, font_choices, debug=args.debug_font)
+            font = fonts[font_choice]
         if invert_at == 0:
             invert = not invert
 
@@ -193,14 +278,14 @@ def main():
             matrix.brightness = 100
         img = clock(now, font, rot, rainbow_image_table[color_rot_deg], black_image, invert=invert)
         matrix.SetImage(img, 0, 0)
-        if args.debug_single:
-            return
         after = time.time()
         consumed_time = after - before
         sleep_time = target_time - consumed_time
         sleep_time = 0 if sleep_time < 0 else sleep_time
         if args.debug_fps:
             print('Frame time {:.3f} Target {:.3f} Sleep Time {:.3f}'.format(consumed_time, target_time, sleep_time))
+        if args.debug_single:
+            return
         if sleep_time > 0:
             time.sleep(sleep_time)
 

@@ -1,9 +1,18 @@
 class FakeMatrix(object):
     def __init__(self):
-        self.brightness = 0
+        self._brightness = 0
 
     def SetImage(self, image, x, y):
         pass
+
+    def get_brightness(self):
+        return self._brightness
+
+    def set_brightness(self, brightness):
+        self._brightness = brightness
+        print('matrix brightness set to {:d}'.format(self._brightness))
+
+    brightness = property(get_brightness, set_brightness)
 
 
 class FakeMatrixSaving(FakeMatrix):

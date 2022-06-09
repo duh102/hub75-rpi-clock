@@ -17,7 +17,7 @@ class ClockPattern(object):
         if debug_font is not None and debug_font:
             print('Clock using {:s}'.format(self.font.get_name()))
 
-        # ## dT dependent data
+        # dT dependent data
         # Units are increments of pi per second; one full circle is 2 pi, so this is roughly one circle per 10s
         self.movement_rotation = fps_tools.DTAwareRotation(d_dt=math.pi/5)
         # Ditto, this is roughly one full rainbow rotation per 6s
@@ -25,7 +25,7 @@ class ClockPattern(object):
         # Unit is 1/Hz, we want to rotate the fonts once every 30s
         self.font_rotation = fps_tools.DTAwarePeriodicValue(d_dt=1/30, reset_func=lambda: self.choose_new_font())
         # Unit is 1/Hz, we want to invert the display once every 60s
-        self.invert_toggle = fps_tools.DTAwarePeriodicValue(d_dt=1/60)
+        self.invert_toggle = fps_tools.DTAwarePeriodicValue(d_dt=1/60, reset_func=lambda: self.invert_display())
 
         # Normal variables
         self.inverted = False

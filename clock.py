@@ -24,21 +24,35 @@ def find_fonts(search_in):
     return found_fonts
 
 
+def time_from_string(string_in):
+    try:
+        parsed = datetime.datetime.strptime(string_in, '%H:%M:%S')
+        now = datetime.datetime.now()
+        return now.replace(hour=parsed.hour, minute=parsed.minute, second=parsed.second)
+    except ValueError:
+        raise argparse.ArgumentError('Not a valid time: {:s}'.format(string_in))
+
+
 class NightClock(object):
-    def __init__(self, morning_hour=None, night_hour=None):
+    def __init__(self, morning_hour=None, night_hour=None, night_hour_switchover_callback=None):
         if morning_hour is None:
             morning_hour = 6
         if night_hour is None:
-            night_hour = 9
+            night_hour = 9+12
         self.morning_hour = datetime.time(hour=morning_hour)
         self.night_hour = datetime.time(hour=night_hour)
         self.is_night_hours = False
+        self.night_hour_switchover_callback = night_hour_switchover_callback
 
     def update_time(self, instant):
         if not self.is_night_hours and (instant.time() > self.night_hour or instant.time() < self.morning_hour):
             self.is_night_hours = True
+            if self.night_hour_switchover_callback is not None:
+                self.night_hour_switchover_callback(self.is_night_hours)
         if self.is_night_hours and (self.night_hour >= instant.time() >= self.morning_hour):
             self.is_night_hours = False
+            if self.night_hour_switchover_callback is not None:
+                self.night_hour_switchover_callback(self.is_night_hours)
 
     def is_night_hours(self):
         return self.is_night_hours
@@ -83,6 +97,7 @@ def main():
     parser.add_argument('--debug-no-matrix', action='store_true', help='Use a fake matrix, discard output')
     parser.add_argument('--debug-no-matrix-save', action='store_true', help='Use a fake matrix, output to file')
     parser.add_argument('--debug-action', choices=['clock', 'weather'], help='Perform specific function rather than rotating through them')
+    parser.add_argument('--debug-set-time', type=time_from_string, default=None, help='For the clock, set a specific time')
     args = parser.parse_args()
 
     debug_options = {
@@ -91,19 +106,11 @@ def main():
         'single': args.debug_single,
         'no-matrix': args.debug_no_matrix,
         'no-matrix-save': args.debug_no_matrix_save,
-        'action': args.debug_action
+        'action': args.debug_action,
+        'set-time': args.debug_set_time
     }
 
     # Loop invariants
-    image_size = (64, 32)
-    night_clock = NightClock()
-    fps_clock = fps_tools.FPSClock(target_fps=60)
-    function_data = FunctionData(night_clock, fps_clock, image_size, debug_options)
-
-    fonts = find_fonts(os.path.dirname(os.path.realpath(__file__)))
-
-    clock_pat = clock_pattern.ClockPattern(function_data, fonts)
-
     if args.debug_no_matrix:
         matrix = rpi_matrix.FakeMatrix()
     elif args.debug_no_matrix_save:
@@ -111,11 +118,28 @@ def main():
     else:
         matrix = rpi_matrix.real_matrix(image_size)
 
+    def night_hours_action(is_night):
+        if is_night:
+            matrix.brightness = 10
+        else:
+            matrix.brightness = 100
+
+    image_size = (64, 32)
+    night_clock = NightClock(night_hour_switchover_callback=night_hours_action)
+    fps_clock = fps_tools.FPSClock(target_fps=60)
+    function_data = FunctionData(night_clock, fps_clock, image_size, debug_options)
+
+    fonts = find_fonts(os.path.dirname(os.path.realpath(__file__)))
+
+    clock_pat = clock_pattern.ClockPattern(function_data, fonts)
+
     while True:
         fps_clock.start_frame()
 
         # Update the pattern in progress
         function_data.set_now(datetime.datetime.now())
+        if args.debug_set_time is not None:
+            function_data.set_now(args.debug_set_time)
         night_clock.update_time(function_data.get_now())
         img = clock_pat.frame(fps_clock.get_dt())
         matrix.SetImage(img, 0, 0)

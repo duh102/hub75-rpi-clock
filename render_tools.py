@@ -12,7 +12,7 @@ def generate_font_map(font, fit_height):
         width = font.getsize(char)[0]
         img = Image.new('L', (width, fit_height))
         draw = ImageDraw.Draw(img)
-        draw.text((0, 0), str(char), font=font, fill=255)
+        draw.text((0, fit_height), str(char), font=font, fill=255, anchor='lb')
         char_attributes['width'] = width
         char_attributes['img'] = img
     return font_map

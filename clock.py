@@ -111,6 +111,7 @@ def main():
     }
 
     # Loop invariants
+    image_size = (64, 32)
     if args.debug_no_matrix:
         matrix = rpi_matrix.FakeMatrix()
     elif args.debug_no_matrix_save:
@@ -124,7 +125,6 @@ def main():
         else:
             matrix.brightness = 100
 
-    image_size = (64, 32)
     night_clock = NightClock(night_hour_switchover_callback=night_hours_action)
     fps_clock = fps_tools.FPSClock(target_fps=60)
     function_data = FunctionData(night_clock, fps_clock, image_size, debug_options)

@@ -2,3 +2,5 @@ err*.txt
 output*.txt
 fonts/
 .idea/
+debug.png
+__*

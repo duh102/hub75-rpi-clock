@@ -4,3 +4,6 @@ fonts/
 .idea/
 debug.png
 __*
+weather_cache.json
+*.pyc
+

@@ -4,20 +4,6 @@ from PIL import Image, ImageDraw, ImageFont, ImageColor
 font_height_str = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-=!@#$%^&*()_+;:\'"[]{},.<>/?\\|`~ \t'
 
 
-def generate_font_map(font, fit_height):
-    # Pre-populate the map with the expected contents
-    # Could we make an object for this? Undoubtedly! But currently it's not worth the effort
-    font_map = {char: {'width': 0, 'img': None} for char in font_height_str}
-    for char, char_attributes in font_map.items():
-        width = font.getsize(char)[0]
-        img = Image.new('L', (width, fit_height))
-        draw = ImageDraw.Draw(img)
-        draw.text((0, fit_height), str(char), font=font, fill=255, anchor='lb')
-        char_attributes['width'] = width
-        char_attributes['img'] = img
-    return font_map
-
-
 class BitmapBackedFont(object):
     def __init__(self, name, font, bitmap_text_drawing):
         self.name = name
@@ -41,8 +27,23 @@ class BitmapTextDrawing(object):
             fit_height = 16
         self.fit_height = fit_height
         if font_map is None:
-            font_map = generate_font_map(font, self.fit_height)
+            font_map = self.__generate_font_map(font, self.fit_height)
         self.font_map = font_map
+
+    def __generate_font_map(self, font, fit_height):
+        # Pre-populate the map with the expected contents
+        # Could we make an object for this? Undoubtedly! But currently it's not worth the effort
+        font_map = {char: {'width': 0, 'height': 0, 'img': None} for char in font_height_str}
+        self.real_height = font.getsize(font_height_str)[1]
+        for char, char_attributes in font_map.items():
+            (width, height) = font.getsize(char)
+            img = Image.new('L', (width, self.real_height))
+            draw = ImageDraw.Draw(img)
+            draw.text((0, fit_height), str(char), font=font, fill=255, anchor='lb')
+            char_attributes['width'] = width
+            char_attributes['height'] = height
+            char_attributes['img'] = img
+        return font_map
 
     def __get_from_fontmap(self, character):
         if character not in font_height_str:
@@ -64,7 +65,7 @@ class BitmapTextDrawing(object):
         x_pos = 0
         img_size = image.size
         # No sense drawing off the image
-        if position[1] + self.fit_height < 0:
+        if position[1] + self.real_height < 0:
             return
         if position[1] > img_size[1]:
             return
@@ -75,8 +76,10 @@ class BitmapTextDrawing(object):
                 continue
             else:
                 # Skip this character if it's off the left side of the image or if we're off the right side
-                if not (x_pos + position[0] + bm_char['width'] < 0) or (x_pos + position[0] > img_size[0]):
-                    image.paste(bm_char['img'], (x_pos+position[0], position[1]))
+                if (x_pos + position[0] + bm_char['width'] < 0) or (x_pos + position[0] > img_size[0]):
+                    x_pos += bm_char['width']
+                    continue
+                image.paste(bm_char['img'], (x_pos+position[0], position[1]))
                 x_pos += bm_char['width']
 
 

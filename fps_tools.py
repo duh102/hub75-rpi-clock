@@ -31,26 +31,41 @@ class DTAwarePeriodicValue(DTAwareValue):
                 self.reset_func()
 
 
+class DTAwareObjectRotation(DTAwarePeriodicValue):
+    def __init__(self, d_dt=None, start_value=None, limit=None, choices=None, initial_choice=None):
+        super().__init__(d_dt=d_dt, start_value=start_value, limit=limit, reset_func=self.rotate_object)
+        if choices is None:
+            choices = []
+        if initial_choice is not None and initial_choice not in choices:
+            raise ValueError('Initial choice passed to DTAwareObjectRotation must be element of the given choices: {:s} not in {:s}'.format(str(initial_choice), str(choices)))
+        self.choices = list(choices)
+        self.choice = initial_choice
+        self.idx = self.choices.index(self.choice)
+
+    def rotate_object(self):
+        if self.choices is None or len(self.choices) == 0:
+            pass
+        self.idx = (self.idx+1) % len(self.choices)
+        self.choice = self.choices[self.idx]
+
+    def get_current_object(self):
+        return self.choice
+
+
 class DTAwareRotation(DTAwarePeriodicValue):
     __twopi = math.pi*2
 
     def __init__(self, d_dt=None, start_rotation=None, reset_func=None):
         super().__init__(d_dt=d_dt, start_value=start_rotation, limit=self.__twopi, reset_func=reset_func)
-        self.rotation_degrees = 0
-        self.recalc_degrees()
         if d_dt is None:
             d_dt = self.__twopi  # Default is one circle a second
         self.d_dt = d_dt
-
-    def recalc_degrees(self):
-        self.rotation_degrees = self.value / self.__twopi * 360
-        return self.rotation_degrees
 
     def get_rotation(self):
         return self.value
 
     def get_rotation_degrees(self):
-        return self.rotation_degrees
+        return self.value / self.__twopi * 360
 
 
 class FPSClock(object):

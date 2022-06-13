@@ -2,16 +2,17 @@ import fps_tools
 import render_tools
 import font_utils
 import math
+import patterns
 from PIL import Image
 
 time_fmt = '%I:%M:%S%p'
 date_fmt = '%b %d %Y'
 
 
-class ClockPattern(object):
+class ClockPattern(patterns.DisplayPattern):
     def __init__(self, function_data, fonts):
-        self.function_data = function_data
-        self.font_collection = font_utils.FontCollection(fonts)
+        super().__init__(function_data, fonts)
+        self.font_collection = font_utils.FontCollection(self.fonts)
         self.font = self.font_collection.get_current_font()
         debug_font = self.function_data.get_debug_flag('font')
         if debug_font is not None and debug_font:
@@ -22,10 +23,10 @@ class ClockPattern(object):
         self.movement_rotation = fps_tools.DTAwareRotation(d_dt=math.pi/5)
         # Ditto, this is roughly one full rainbow rotation per 6s
         self.color_rotation = fps_tools.DTAwareRotation(d_dt=math.pi/3)
-        # Unit is 1/Hz, we want to rotate the fonts once every 30s
-        self.font_rotation = fps_tools.DTAwarePeriodicValue(d_dt=1/30, reset_func=lambda: self.choose_new_font())
-        # Unit is 1/Hz, we want to invert the display once every 60s
-        self.invert_toggle = fps_tools.DTAwarePeriodicValue(d_dt=1/60, reset_func=lambda: self.invert_display())
+        # Unit is Hz, we want to rotate the fonts once every 30s
+        self.font_rotation = fps_tools.DTAwarePeriodicValue(d_dt=1, limit=30, reset_func=lambda: self.choose_new_font())
+        # Ditto, we want to invert the display once every 60s
+        self.invert_toggle = fps_tools.DTAwarePeriodicValue(d_dt=1, limit=60, reset_func=lambda: self.invert_display())
 
         # Normal variables
         self.inverted = False
@@ -65,28 +66,26 @@ class ClockPattern(object):
         image_size = self.function_data.get_image_size()
 
         alpha_img = Image.new("L", image_size)
+        half_img_x = int(image_size[0]/2.0)
+        time_x_var = abs(time_str_size - image_size[0])
+        date_x_var = abs(date_str_size - image_size[0])
+        half_time_x = time_str_size / 2.0
+        half_date_x = date_str_size / 2.0
 
         if time_str_size < image_size[0] and date_str_size < image_size[0]:
             # draw it once
-            bitmap_drawing.text((0, 0), alpha_img, time_str)
-            bitmap_drawing.text((0, 16), alpha_img, date_str)
+            bitmap_drawing.text((int(half_img_x-half_time_x), 0), alpha_img, time_str)
+            bitmap_drawing.text((int(half_img_x-half_date_x), 16), alpha_img, date_str)
         else:
             # animate it bouncing left to right
-            time_x_siz = time_str_size
-            date_x_siz = date_str_size
-            time_x_var = time_x_siz - image_size[0]
-            date_x_var = date_x_siz - image_size[0]
-            half_time_x = time_x_siz / 2.0
-            half_date_x = date_x_siz / 2.0
-
-            time_x_inc = 0 if time_x_var < 0 else time_x_var
-            date_x_inc = 0 if date_x_var < 0 else date_x_var
+            time_x_inc = 0 if time_str_size <= image_size[0] else time_x_var
+            date_x_inc = 0 if date_str_size <= image_size[0] else date_x_var
 
             sin_var = math.sin(self.movement_rotation.get_rotation())
 
-            bitmap_drawing.text((int(round(sin_var * (time_x_inc / 2.0) - half_time_x + 32)), 0), alpha_img, time_str)
-            bitmap_drawing.text((int(round(sin_var * (date_x_inc / 2.0) - half_date_x + 32)), 16), alpha_img, date_str)
-        fg = self.rainbow_image_table[int(self.color_rotation.rotation_degrees)]
+            bitmap_drawing.text((int(round(sin_var * (time_x_inc / 2.0) - half_time_x + half_img_x)), 0), alpha_img, time_str)
+            bitmap_drawing.text((int(round(sin_var * (date_x_inc / 2.0) - half_date_x + half_img_x)), 16), alpha_img, date_str)
+        fg = self.rainbow_image_table[int(self.color_rotation.get_rotation_degrees())]
         bg = self.black_image
         if not self.inverted:
             return Image.composite(fg, bg, alpha_img).convert("RGB")

@@ -3,11 +3,13 @@ import argparse
 import datetime
 import os
 import time
+import tzlocal
 
 import fps_tools
 import render_tools
 import rpi_matrix
 import clock_pattern
+import weather_pattern
 
 
 def find_fonts(search_in):
@@ -27,7 +29,8 @@ def find_fonts(search_in):
 def time_from_string(string_in):
     try:
         parsed = datetime.datetime.strptime(string_in, '%H:%M:%S')
-        now = datetime.datetime.now()
+        tz = tzlocal.get_localzone()
+        now = datetime.datetime.now(tz)
         return now.replace(hour=parsed.hour, minute=parsed.minute, second=parsed.second)
     except ValueError:
         raise argparse.ArgumentError('Not a valid time: {:s}'.format(string_in))
@@ -112,6 +115,7 @@ def main():
 
     # Loop invariants
     image_size = (64, 32)
+    tz = tzlocal.get_localzone()
     if args.debug_no_matrix:
         matrix = rpi_matrix.FakeMatrix()
     elif args.debug_no_matrix_save:
@@ -132,16 +136,27 @@ def main():
     fonts = find_fonts(os.path.dirname(os.path.realpath(__file__)))
 
     clock_pat = clock_pattern.ClockPattern(function_data, fonts)
+    weather_pat = weather_pattern.WeatherPattern(function_data, fonts)
+    patterns = {
+        'clock': clock_pat,
+        'weather': weather_pat
+    }
+
+    pattern_rotation = fps_tools.DTAwareObjectRotation(d_dt=1, limit=10, choices=patterns.keys(), initial_choice='clock')
 
     while True:
         fps_clock.start_frame()
 
         # Update the pattern in progress
-        function_data.set_now(datetime.datetime.now())
+        function_data.set_now(datetime.datetime.now(tz))
         if args.debug_set_time is not None:
             function_data.set_now(args.debug_set_time)
         night_clock.update_time(function_data.get_now())
-        img = clock_pat.frame(fps_clock.get_dt())
+        pattern_rotation.dt(fps_clock.get_dt())
+        pattern = patterns.get(pattern_rotation.get_current_object(), clock_pat)
+        if debug_options.get('action') is not None:
+            pattern = patterns.get(debug_options.get('action'), clock_pat)
+        img = pattern.frame(fps_clock.get_dt())
         matrix.SetImage(img, 0, 0)
 
         # Perform the FPS counting

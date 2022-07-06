@@ -18,7 +18,7 @@ class WeatherPattern(patterns.DisplayPattern):
 
     def __init__(self, function_data, fonts):
         super().__init__(function_data, fonts)
-        min_width = self.function_data.get_image_size()[0]
+        min_width = self.function_data.get_size_data().get_image_size()[0]
         test_str = '100F'
         min_font_name = list(self.fonts.keys())[0]  # Pick a random one to make sure we have something
         self.font = self.fonts[min_font_name]
@@ -72,8 +72,8 @@ class WeatherPattern(patterns.DisplayPattern):
             tm = lookahead_min.get_time()
             min_fmt = '{:.0f}F {:d}{:s}'.format(lookahead_min.get_value_f(), tm.hour % 12, 'A' if tm.hour < 12 else 'P')
 
-        image_size = self.function_data.get_image_size()
-        bg = render_tools.gen_black_image(self.function_data.get_image_size())
+        image_size = self.function_data.get_size_data().get_image_size()
+        bg = render_tools.gen_black_image(image_size)
         hi_legend_text = 'Hi:'
         hi_legend_width = bm_font.width(hi_legend_text)
         lo_legend_text = 'Lo:'
@@ -104,7 +104,7 @@ class WeatherPattern(patterns.DisplayPattern):
     def frame(self, dt):
         now = self.function_data.get_now()
         if now is None:
-            return render_tools.gen_black_image(self.function_data.get_image_size())
+            return render_tools.gen_black_image(self.function_data.get_size_data().get_image_size())
         if self.image_cache is None or (self.cache_time is None or self.cache_time < now-self.cache_duration):
             self.image_cache = self.__gen_image()
             self.cache_time = now

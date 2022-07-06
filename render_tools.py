@@ -39,7 +39,7 @@ class BitmapTextDrawing(object):
             (width, height) = font.getsize(char)
             img = Image.new('L', (width, self.real_height))
             draw = ImageDraw.Draw(img)
-            draw.text((0, fit_height), str(char), font=font, fill=255, anchor='lb')
+            draw.text((0, self.real_height), str(char), font=font, fill=255, anchor='lb')
             char_attributes['width'] = width
             char_attributes['height'] = height
             char_attributes['img'] = img

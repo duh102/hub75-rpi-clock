@@ -6,4 +6,5 @@ debug.png
 __*
 weather_cache.json
 *.pyc
+config.json
 

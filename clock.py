@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 import argparse
 import datetime
+import json
 import os
 import time
 import tzlocal
@@ -10,9 +11,10 @@ import render_tools
 import rpi_matrix
 import clock_pattern
 import weather_pattern
+import config
 
 
-def find_fonts(search_in):
+def find_fonts(search_in, fit_height):
     found_fonts = ['DejaVuSans.ttf']
     search_path = os.path.join(search_in, 'fonts')
     if os.path.exists(search_path):
@@ -21,7 +23,7 @@ def find_fonts(search_in):
             temp_file = os.path.join(search_path, fil)
             if os.path.isfile(temp_file) and temp_file[-4:].lower() == '.ttf':
                 found_fonts.append(temp_file)
-    generated_fonts = [render_tools.get_font_fit(font_name, 16) for font_name in found_fonts]
+    generated_fonts = [render_tools.get_font_fit(font_name, fit_height) for font_name in found_fonts]
     found_fonts = {font_data.get_name(): font_data for font_data in generated_fonts}
     return found_fonts
 
@@ -39,9 +41,9 @@ def time_from_string(string_in):
 class NightClock(object):
     def __init__(self, morning_hour=None, night_hour=None, night_hour_switchover_callback=None):
         if morning_hour is None:
-            morning_hour = 6
+            morning_hour = 7
         if night_hour is None:
-            night_hour = 9+12
+            night_hour = 10+12
         self.morning_hour = datetime.time(hour=morning_hour)
         self.night_hour = datetime.time(hour=night_hour)
         self.is_night_hours = False
@@ -62,11 +64,11 @@ class NightClock(object):
 
 
 class FunctionData(object):
-    def __init__(self, night_clock, fps_clock, image_size, debug_flags):
+    def __init__(self, night_clock, fps_clock, size_data, debug_flags):
         self.night_clock = night_clock
         self.fps_clock = fps_clock
         self.now = None
-        self.image_size = image_size
+        self.size_data = size_data
         self.debug_flags = debug_flags
 
     def set_now(self, now):
@@ -81,8 +83,8 @@ class FunctionData(object):
     def get_night_clock(self):
         return self.night_clock
 
-    def get_image_size(self):
-        return self.image_size
+    def get_size_data(self):
+        return self.size_data
 
     def get_debug_flags(self):
         return self.debug_flags
@@ -114,14 +116,28 @@ def main():
     }
 
     # Loop invariants
-    image_size = (64, 32)
+    containing_dir = os.path.dirname(os.path.realpath(__file__))
+    size_cache_file = os.path.join(containing_dir, 'config.json')
+
+    # Display size cache
+    size_data = config.DisplayConfig()
+    if os.path.isfile(size_cache_file):
+        try:
+            with open(size_cache_file, 'r') as infil:
+                size_data = config.DisplayConfig.deserialize(json.load(infil))
+        except Exception as e:
+            print('Unable to load config data from {}: {}'.format(size_cache_file, str(e)))
+    else:
+        with open(size_cache_file, 'w') as outfil:
+            json.dump(size_data.serialize(), outfil)
+
     tz = tzlocal.get_localzone()
     if args.debug_no_matrix:
         matrix = rpi_matrix.FakeMatrix()
     elif args.debug_no_matrix_save:
         matrix = rpi_matrix.FakeMatrixSaving()
     else:
-        matrix = rpi_matrix.real_matrix(image_size)
+        matrix = rpi_matrix.real_matrix(size_data)
 
     def night_hours_action(is_night):
         if is_night:
@@ -131,9 +147,9 @@ def main():
 
     night_clock = NightClock(night_hour_switchover_callback=night_hours_action)
     fps_clock = fps_tools.FPSClock(target_fps=60)
-    function_data = FunctionData(night_clock, fps_clock, image_size, debug_options)
+    function_data = FunctionData(night_clock, fps_clock, size_data, debug_options)
 
-    fonts = find_fonts(os.path.dirname(os.path.realpath(__file__)))
+    fonts = find_fonts(containing_dir, size_data.get_height()*16)
 
     clock_pat = clock_pattern.ClockPattern(function_data, fonts)
     weather_pat = weather_pattern.WeatherPattern(function_data, fonts)

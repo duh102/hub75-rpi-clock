@@ -144,11 +144,11 @@ class WeatherCache(object):
         if self.weather_data is None or self._cache_too_old():
             self.weather_data = self._retrieve_weather_immediate()
             self.weather_prediction_data = WeatherPredictionData(self.weather_data, self.tz)
-        try:
-            with open(self.cache_file, 'w') as outfil:
-                json.dump(self.weather_data, outfil)
-        except Exception as e:
-            print('Unable to cache weather data to {:s}: {:s}'.format(os.path.abspath(self.cache_file), str(e)))
+            try:
+                with open(self.cache_file, 'w') as outfil:
+                    json.dump(self.weather_data, outfil)
+            except Exception as e:
+                print('Unable to cache weather data to {:s}: {:s}'.format(os.path.abspath(self.cache_file), str(e)))
         return self.weather_prediction_data
 
     def _retrieve_weather_immediate(self):

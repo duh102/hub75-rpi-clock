@@ -108,8 +108,8 @@ def rgb_from_hue(hue, saturation=None, value=None):
     return ImageColor.getrgb('hsv({:d},{:d}%,{:d}%)'.format(hue, saturation, value))
 
 
-def gen_color_table():
-    return [rgb_from_hue(col) for col in range(360)]
+def gen_color_table(saturation=None, value=None):
+    return [rgb_from_hue(col, saturation=saturation, value=value) for col in range(360)]
 
 
 def gen_rainbow_image(color_rot, color_table, image_size):

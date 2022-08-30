@@ -32,7 +32,7 @@ class ClockPattern(patterns.DisplayPattern):
         self.inverted = False
 
         # Cached data
-        self.color_table = render_tools.gen_color_table()
+        self.color_table = render_tools.gen_color_table(saturation=80)
         self.black_image = render_tools.gen_black_image(function_data.get_size_data().get_image_size())
         self.rainbow_image_table = [
             render_tools.gen_rainbow_image(

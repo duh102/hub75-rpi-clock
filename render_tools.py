@@ -1,8 +1,54 @@
 from PIL import Image, ImageDraw, ImageFont, ImageColor
+import datetime
 
 
 font_height_str = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-=!@#$%^&*()_+;:\'"[]{},.<>/?\\|`~ \t'
 
+class TextImageCacheEntry(object):
+    def __init__(self, bitmap, now_time, keepalive_time=None):
+        self.bitmap = bitmap
+        if keepalive_time is None:
+            keepalive_time = datetime.timedelta(seconds=1)
+        self.keepalive_time = keepalive_time
+        self.last_use = now_time
+
+    def get_bitmap(self, now_time):
+        self.last_use = now_time
+        return self.bitmap
+
+    def get_keepalive_time(self):
+        return self.keepalive_time
+
+    def get_last_use(self):
+        return self.last_use
+
+    def is_expired(self, time_now):
+        return (self.last_use + self.keepalive_time) < time_now
+
+class TextImageCacheRenderer(object):
+    def __init__(self, font):
+        self.font = font
+
+    def get_image(self, string):
+        (width, height) = self.font.getsize(string)
+        img = Image.new('L', (width, height))
+        draw = ImageDraw.Draw(img)
+        draw.text((0, height), string, font=self.font, fill=255, anchor='lb')
+        return img
+
+class TextImageCache(object):
+    def __init__(self, renderer, time_func=None):
+        if time_func is None:
+            time_func = datetime.datetime.now
+        self.time_func = time_func
+        self.cache = {}
+        self.renderer = renderer
+
+    def get_string(self, string, keepalive_time=None):
+        now = self.time_func()
+        if string not in self.cache or self.cache[string].is_expired(now):
+            self.cache[string] = TextImageCacheEntry(self.renderer.get_image(string), now, keepalive_time=keepalive_time)
+        return self.cache[string].get_bitmap(now)
 
 class BitmapBackedFont(object):
     def __init__(self, name, font, bitmap_text_drawing):
@@ -19,8 +65,14 @@ class BitmapBackedFont(object):
     def get_bm_font(self):
         return self.bitmap_text_drawing
 
-
 class BitmapTextDrawing(object):
+    def width(self, string):
+        pass
+
+    def text(self, position, image, string):
+        pass
+
+class CharacterCachedBitmapTextDrawing(BitmapTextDrawing):
     def __init__(self, font, font_map=None, fit_height=None):
         self.font = font
         if fit_height is None:
@@ -82,6 +134,19 @@ class BitmapTextDrawing(object):
                 image.paste(bm_char['img'], (x_pos+position[0], position[1]))
                 x_pos += bm_char['width']
 
+class StringCachedBitmapTextDrawing(BitmapTextDrawing):
+    def __init__(self, font, cache_keepalive=None):
+        self.font = font
+        self.text_cache = TextImageCache(TextImageCacheRenderer(self.font))
+        self.cache_keepalive = cache_keepalive
+
+    def width(self, string):
+        return self.font.getsize(string)[0]
+
+    def text(self, position, image, string):
+        string_image = self.text_cache.get_string(string, keepalive_time=self.cache_keepalive)
+        image.paste(string_image, (position[0], position[1]))
+
 
 def get_font_fit(font_name, fit_height, start_size=None):
     if start_size is None:
@@ -93,7 +158,7 @@ def get_font_fit(font_name, fit_height, start_size=None):
         start_size -= 1
         font = ImageFont.truetype(font_name, start_size)
         font_size = font.getsize(font_height_str)
-    bm_draw = BitmapTextDrawing(font, fit_height=fit_height)
+    bm_draw = StringCachedBitmapTextDrawing(font)
     return BitmapBackedFont(font.getname()[0], font, bm_draw)
 
 

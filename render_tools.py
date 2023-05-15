@@ -43,12 +43,26 @@ class TextImageCache(object):
         self.time_func = time_func
         self.cache = {}
         self.renderer = renderer
+        self.cache_check_time = self.time_func()
+        self.cache_clear_time = datetime.timedelta(seconds=10)
 
     def get_string(self, string, keepalive_time=None):
         now = self.time_func()
         if string not in self.cache or self.cache[string].is_expired(now):
             self.cache[string] = TextImageCacheEntry(self.renderer.get_image(string), now, keepalive_time=keepalive_time)
+        self._check_cache_expiration(now)
         return self.cache[string].get_bitmap(now)
+
+    def _check_cache_expiration(self, now):
+      if (self.cache_check_time + self.cache_clear_time) >= now:
+        return
+      self.cache_check_time = now
+      to_del = []
+      for string, entry in self.cache.items():
+        if entry.is_expired(now):
+          to_del.append(string)
+      for string in to_del:
+        del self.cache[string]
 
 class BitmapBackedFont(object):
     def __init__(self, name, font, bitmap_text_drawing):
